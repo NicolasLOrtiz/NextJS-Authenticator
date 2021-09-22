@@ -5,16 +5,25 @@ import {
   GetServerSidePropsResult,
 } from "next";
 import { AuthTokenError } from "../errors/AuthTokenError";
+import decode from 'jwt-decode'
+import {validateUserAuthorization} from "./validateUserAuthorization";
+
+type WithSSRAuthOptions = {
+	permissions?: string[];
+	roles?: string[];
+}
 
 export function withSSRAuth<P>(
-  serverSideFunction: GetServerSideProps<P>
+  serverSideFunction: GetServerSideProps<P>,
+	options?: WithSSRAuthOptions
 ): GetServerSideProps {
   return async (
     ctx: GetServerSidePropsContext
   ): Promise<GetServerSidePropsResult<P>> => {
     const cookies = parseCookies(ctx);
-
-    if (!cookies["nextauth.token"]) {
+		const token = cookies["nextauth.token"];
+    
+    if (!token) {
       return {
         redirect: {
           destination: "/",
@@ -23,6 +32,27 @@ export function withSSRAuth<P>(
       };
     }
 
+    if(options){
+			const user = decode<{ permissions: string[], roles: string[] }>(token);
+			const { permissions, roles } = options;
+	
+			const userValidAuthorization = validateUserAuthorization({
+				user,
+				permissions,
+				roles
+			});
+			
+			if(!userValidAuthorization) {
+				return {
+					// notFound: true,
+					redirect: {
+						destination: '/dashboard',
+						permanent: false,
+					}
+				}
+			}
+		}
+    
     try {
       return await serverSideFunction(ctx);
     } catch (err) {
